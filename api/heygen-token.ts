@@ -1,8 +1,3 @@
-// /api/heygen-token.js (Vercel)
-// Make sure HEYGEN_API_KEY is set in Vercel → Project → Settings → Environment Variables
-// Also set ALLOWED_ORIGINS to a comma-separated list of your domains:
-//   https://97hsgp-a4.myshopify.com,https://<your-custom-domain>,https://<your-preview-domain>.myshopify.com
-
 export default async function handler(req, res) {
   const origin = req.headers.origin || "";
   const allowed = (process.env.ALLOWED_ORIGINS || "")
@@ -10,7 +5,7 @@ export default async function handler(req, res) {
     .map(s => s.trim())
     .filter(Boolean);
 
-  // Preflight
+  // CORS preflight
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
@@ -19,9 +14,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Check origin
+  // IMPORTANT: only allow from whitelisted origins
   if (!allowed.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", ""); // block
+    res.setHeader("Access-Control-Allow-Origin", "");
     return res.status(403).json({ error: "forbidden_origin", origin });
   }
 
@@ -29,11 +24,10 @@ export default async function handler(req, res) {
     const key = process.env.HEYGEN_API_KEY;
     if (!key) return res.status(500).json({ error: "missing_api_key" });
 
-    // Ask HeyGen for a streaming token
     const r = await fetch("https://api.heygen.com/v1/streaming.create_token", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key },
-      body: JSON.stringify({}) // no body needed today
+      body: JSON.stringify({})
     });
 
     const data = await r.json();
