@@ -1,14 +1,14 @@
 // Vercel serverless function: /api/heygen-token
-// Returns a short-lived HeyGen streaming token with strict CORS.
+// Retourne un jeton HeyGen "streaming" (courte durée) avec CORS strict.
 
 export default async function handler(req: any, res: any) {
-  // Allow only your Shopify domain (add your custom domain later if you get one)
   const origin = req.headers.origin || '';
-  const ALLOWED = new Set([
-    'https://97hsgp-a4.myshopify.com'
+  const ALLOWED = new Set<string>([
+    'https://97hsgp-a4.myshopify.com',   // ta boutique Shopify
+    'https://heygen-token-api.vercel.app' // utile pour tests directs si besoin
   ]);
 
-  // Basic CORS
+  // Préflight CORS
   if (req.method === 'OPTIONS') {
     if (!ALLOWED.has(origin)) return res.status(403).end();
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -22,24 +22,22 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Call HeyGen to mint a short-lived token (server-side key!)
     const r = await fetch('https://api.heygen.com/v1/streaming/token', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.HEYGEN_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({}) // pass options if HeyGen supports any for your plan
+      body: JSON.stringify({}) // options éventuelles selon ton plan HeyGen
     });
 
     const text = await r.text();
-    if (!r.ok) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      return res.status(r.status).json({ error: 'heygen_error', detail: text });
-    }
-
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Content-Type', 'application/json');
+
+    if (!r.ok) {
+      return res.status(r.status).json({ error: 'heygen_error', detail: text });
+    }
     return res.status(200).send(text); // { token: "...", expires_in: ... }
   } catch (e: any) {
     res.setHeader('Access-Control-Allow-Origin', origin);
