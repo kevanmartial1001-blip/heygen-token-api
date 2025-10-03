@@ -1,56 +1,50 @@
-// /api/heygen-token  — Vercel serverless
-export default async function handler(req: any, res: any) {
-  // 1) Déterminer l’origine : Origin header OU Referer (fallback)
-  const rawOrigin = req.headers.origin || '';
-  let origin = rawOrigin;
-  if (!origin && req.headers.referer) {
-    try { origin = new URL(req.headers.referer).origin; } catch {}
+// /api/heygen-token.js (Vercel)
+// Make sure HEYGEN_API_KEY is set in Vercel → Project → Settings → Environment Variables
+// Also set ALLOWED_ORIGINS to a comma-separated list of your domains:
+//   https://97hsgp-a4.myshopify.com,https://<your-custom-domain>,https://<your-preview-domain>.myshopify.com
+
+export default async function handler(req, res) {
+  const origin = req.headers.origin || "";
+  const allowed = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  // Preflight
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.status(204).end();
+    return;
   }
 
-  // 2) Domaines autorisés
-  const ALLOWED = new Set<string>([
-    'https://97hsgp-a4.myshopify.com',     // ta boutique Shopify
-    'https://heygen-token-api.vercel.app'  // utile pour certains tests
-    // ajoute ici ton domaine custom si tu en as un plus tard
-  ]);
-
-  // 3) Préflight CORS
-  if (req.method === 'OPTIONS') {
-    if (!origin || !ALLOWED.has(origin)) return res.status(403).end();
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    return res.status(200).end();
-  }
-
-  // 4) Vérif CORS (on accepte aussi le cas où Origin est vide MAIS referer match)
-  if (!origin || !ALLOWED.has(origin)) {
-    return res.status(403).json({ error: 'forbidden_origin', origin });
+  // Check origin
+  if (!allowed.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", ""); // block
+    return res.status(403).json({ error: "forbidden_origin", origin });
   }
 
   try {
-    // 5) Appel HeyGen (clé côté serveur uniquement)
-    const r = await fetch('https://api.heygen.com/v1/streaming/token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.HEYGEN_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({})
+    const key = process.env.HEYGEN_API_KEY;
+    if (!key) return res.status(500).json({ error: "missing_api_key" });
+
+    // Ask HeyGen for a streaming token
+    const r = await fetch("https://api.heygen.com/v1/streaming.create_token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key },
+      body: JSON.stringify({}) // no body needed today
     });
 
-    const text = await r.text();
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json(data);
 
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    if (!r.ok) {
-      return res.status(r.status).json({ error: 'heygen_error', detail: text });
-    }
-    return res.status(200).send(text); // { token: "...", expires_in: ... }
-  } catch (e: any) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    return res.status(500).json({ error: 'server_error', detail: String(e) });
+    return res.status(200).json({ token: data?.data?.token || data?.token });
+  } catch (e) {
+    return res.status(500).json({ error: "token_failed", detail: String(e) });
   }
 }
