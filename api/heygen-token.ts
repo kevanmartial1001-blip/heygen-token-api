@@ -1,15 +1,12 @@
-// /api/heygen-token.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// /api/heygen-token.js
+export default async function handler(req, res) {
+  const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const origin = String(req.headers.origin || '');
 
-const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const origin = (req.headers.origin || '').toString();
-
-  // CORS preflight
+  // Preflight
   if (req.method === 'OPTIONS') {
     if (ALLOWED.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
@@ -20,6 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(204).end();
   }
 
+  // Origin check
   if (!ALLOWED.includes(origin)) {
     res.setHeader('Vary', 'Origin');
     return res.status(403).json({ error: 'forbidden_origin', origin });
@@ -32,27 +30,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Create a short-lived token with your HeyGen API key
+    // Exchange your HEYGEN_API_KEY for a short-lived session token
     const r = await fetch('https://api.heygen.com/v1/streaming.create_token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Api-Key': process.env.HEYGEN_API_KEY || ''
       },
-      body: JSON.stringify({}) // Body is currently empty for token creation
+      body: JSON.stringify({})
     });
-
     const data = await r.json();
-    if (!r.ok) {
-      throw new Error(data?.message || 'Token fetch failed');
-    }
+
+    if (!r.ok) throw new Error(data?.message || 'Token fetch failed');
 
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     return res.status(200).json({ token: data.data?.token || data.token });
-  } catch (e:any) {
+  } catch (e) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    return res.status(500).json({ error: 'server_error', message: e?.message });
+    return res.status(500).json({ error: 'server_error', message: e?.message || String(e) });
   }
 }
